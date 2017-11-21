@@ -1,3 +1,15 @@
+[Recently](https://www.weave.works/blog/gitops-operations-by-pull-request), the fine folks of Weavework have been advocating for a mode of operation that they call _GitOps_
+
+This resonates true with our SRE team at Bitnami where we use Kubernetes to manage [Bitnami Cloud Hosting](https://bitnami.com/cloud) a launchpad for over 100 applications on public Clouds.
+
+Our internal deployment pipeline relies on Git as the source of truth. This is where we declare the state of our applications. A Jenkins based setup takes this declared state and applies it to our Kubernetes clusters.
+
+Like Weave, we believe that _GitOps_ is the future (and for some already the present) of application management. 
+
+One of our open source project is specifically addressing a GitOps workflow. Sealed-secret is a Kubernetes CRD controller to allow you to store even sensitive information (aka secrets) in Git.
+
+In this blog we show you how Weave Flux can be used in conjunction with Bitnami's Sealed secret to create a continuous deployment pipeline where all operations are git based and where the desired state of your apps is declared in your git repos including your secrets.
+
 # Flux demo
 
 Clone `https://github.com/weaveworks/flux` and go to the `deploy` directory.
