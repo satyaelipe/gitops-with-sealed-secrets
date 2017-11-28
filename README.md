@@ -12,10 +12,35 @@ In this blog we show you how Weave Cloud Deploy can be used in conjunction with 
 
 ## Setup Weave Cloud Deploy
 
-Start by creating a Weave Cloud account at https://cloud.weave.work, then follow the setup instruction to install agents in your Kubernetes cluster.
+Start by creating a Weave Cloud account at https://cloud.weave.works, and create an instance as show in screenshot below (name it whatever you like, of course):
 
-Then fork this repository and proceed to 'Deploy Config' page. Enter the repository URL and copy `kubectl apply` command to update agent's configuration.
-Once the agent is connected and configured correctly, make sure to use 'Push Key' button to complete repository setup.
+![](screenshots/1.png)
+
+
+Then follow the setup instruction to install agents in your Kubernetes cluster, and copy `kubectl apply` command from Weave Cloud setup page.
+
+![](screenshots/2.png)
+![](screenshots/3.png)
+![](screenshots/4.png)
+
+Next, run `kubectl apply` command you've copied to install the Weave Cloud agents.
+
+Now, **fork this repository**, copy SSH URL (`git@github:<username>/gitops-with-sealed-secrets`) and proceed to deploy configuration page in Weave Cloud as show in screenshot below.
+
+![](screenshots/5.png)
+
+Enter the repository URL and copy `kubectl apply` command to update agent's configuration, then click 'push key' button to complete repository setup.
+
+![](screenshots/6.png)
+
+Once the agent is connected and configured correctly, you should see 'Sync' notification as show on screenshot below.
+
+![](screenshots/7.png)
+
+You should also be able to find `default:deployment/mysql` in Weave Cloud Deploy UI.
+
+![](screenshots/8.png)
+
 
 Now in your Git repo, you can add all the YAML manifests that make up your application. GitOps will be in effect and every git push resulting in a commit will result in the Weave Cloud agent pulling the new version of the manifests and applying the difference in your Kubernetes cluster.
 
@@ -72,7 +97,7 @@ The contents of resulting `secret.json` will apper like this:
 }
 ```
 
-Save it in a file and encrypt it
+Save it in a file and encrypt it using `kubeseal` command like this:
 
 > Note: currently Weave Cloud Deploy doesn't support JSON, but as YAML is a subset of JSON we can simply use `.yaml` suffix
 
