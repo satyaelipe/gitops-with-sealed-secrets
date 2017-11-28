@@ -45,15 +45,25 @@ kubectl create -f https://github.com/bitnami/sealed-secrets/releases/download/$r
 kubectl create -f https://github.com/bitnami/sealed-secrets/releases/download/$release/controller.yaml
 ```
 
-To generate a Sealed secret object you can start from a regular Kubernetes secret object (not stored in etcd) and then use `kubeseal` to obtain a properly encrypted secret:
+Now, clone your fork of this repository and cd into it.
+```
+git clone git@github.com/<username>/gitops-with-sealed-secrets
+cd gitops-with-sealed-secret
+```
+
+To generate a SealedSecret object you need to create a regular Kubernetes secret object localy and then use `kubeseal` to obtain a properly encrypted secret:
 
 ```
-kubectl create secret generic foobar --from-literal=password=root -o json --dry-run
+kubectl create secret generic mysql --from-literal=password=root -o json --dry-run > secret.json
+```
+
+The contents of resulting `secret.json` will apper like this:
+```
 {
     "kind": "Secret",
     "apiVersion": "v1",
     "metadata": {
-        "name": "foobar",
+        "name": "mysql",
         "creationTimestamp": null
     },
     "data": {
@@ -70,43 +80,62 @@ Save it in a file and encrypt it
 kubeseal < secret.json > sealed-secret.yaml
 ```
 
+And check it in:
+
+```
+git add sealed-secret.yaml
+git commit -m 'Add sealed secrtet'
+git push
+```
+
 Now this encrypted secret can be stored in Git as you wish, and once the Weave Cloud agent deploys it automatically, the Sealed-secrets controller will detect it and automatically decrypt it and generate a real Kubernetes secret object.
 
 This process allows you to keep using GitOps even for your sensitive information. You keep it fully encrypted in your git repo but the Weave Cloud agent will automatically leverage the sealed secret controller to generate the valid secret object that your other manifests can use.
 
 
-## [Example](https://github.com/sebgoa/flux-demo) with Mysql Database
+## [Example](https://github.com/sebgoa/flux-demo) with MySQL Database
 
-To illustrate all of this, write a Pod manifest to run Mysql database using a `mysql` secret that holds the MySql root password:
+> Note: This example is aleready include in the repository
+
+To illustrate all of this, write a manifest to run MySQL database using a `mysql` secret that holds the MySQL root password:
 
 ```
-apiVersion: v1
-kind: Pod
+apiVersion: apps/v1beta2
+kind: Deployment
 metadata:
   name: mysql
+  labels:
+    name: mysql
 spec:
-  containers:
-  - image: mysql:5.5
-    name: db
-    volumeMounts:
-    - mountPath: /var/lib/mysql
-      name: barfoo
-    env:
-      - name: MYSQL_ROOT_PASSWORD
-        valueFrom:
-          secretKeyRef:
-            name: mysql
-            key: password
-  volumes:
-  - name: barfoo
-    persistentVolumeClaim:
-      claimName: mysql
+  selector:
+    matchLabels:
+      name: mysql
+  template:
+    metadata:
+      labels:
+        name: mysql
+    spec:
+      containers:
+      - image: mysql:5.5
+        name: db
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: barfoo
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql
+                key: password
+      volumes:
+      - name: barfoo
+        persistentVolumeClaim:
+          claimName: mysql
 ```
 
 But instead of storing an unencrypted secret you store in Git a _Sealed-Secret_ which is safe to share publicly.
 
 ```
-
 apiVersion: bitnami.com/v1alpha1
 kind: SealedSecret
 metadata:
@@ -122,15 +151,14 @@ If you are curious to learn more about the encryption process please check the [
 The result is that in your cluster you will see a running mysql Pod that is using a Kubernetes Secret to store its root password. However the actual password is stored safely in Git as a sealed secret.
 
 ```
-kubectl get pods --all-namespaces
-NAMESPACE     NAME                                        READY     STATUS                       RESTARTS   AGE
-default       mysql                                       1/1       Running 						  0          30m
-kube-system   sealed-secrets-controller-cd4f586fc-xp2tx   1/1       Running                      0          36m
-...
-$ kubectl get secrets
-NAME                  TYPE                                  DATA      AGE
-default-token-nqg8d   kubernetes.io/service-account-token   3         1h
-$ kubectl get sealedsecret
-NAME      AGE
-mysql     36m
+$ kubectl get deployments,pods,secrets
+NAME           DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+deploy/mysql   1         1         1            0           14m
+
+NAME                        READY     STATUS  RESTARTS   AGE
+po/mysql-6965c5b477-wqtw8   1/1       Ready   0          14m
+
+NAME                          TYPE                                  DATA      AGE
+secrets/default-token-rndqq   kubernetes.io/service-account-token   3         12d
+secrets/mysql                 Opaque
 ```
