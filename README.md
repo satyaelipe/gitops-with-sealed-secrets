@@ -12,10 +12,35 @@ In this blog we show you how Weave Cloud Deploy can be used in conjunction with 
 
 ## Setup Weave Cloud Deploy
 
-Start by creating a Weave Cloud account at https://cloud.weave.work, then follow the setup instruction to install agents in your Kubernetes cluster.
+Start by creating a Weave Cloud account at https://cloud.weave.works, and create an instance as show in screenshot below (name it whatever you like, of course):
 
-Then fork this repository and proceed to 'Deploy Config' page. Enter the repository URL and copy `kubectl apply` command to update agent's configuration.
-Once the agent is connected and configured correctly, make sure to use 'Push Key' button to complete repository setup.
+![](screenshots/1.png)
+
+
+Then follow the setup instruction to install agents in your Kubernetes cluster, and copy `kubectl apply` command from Weave Cloud setup page.
+
+![](screenshots/2.png)
+![](screenshots/3.png)
+![](screenshots/4.png)
+
+Next, run `kubectl apply` command you've copied to install the Weave Cloud agents.
+
+Now, **fork this repository**, copy SSH URL (`git@github:<username>/gitops-with-sealed-secrets`) and proceed to deploy configuration page in Weave Cloud as show in screenshot below.
+
+![](screenshots/5.png)
+
+Enter the repository URL and copy `kubectl apply` command to update agent's configuration, then click 'push key' button to complete repository setup.
+
+![](screenshots/6.png)
+
+Once the agent is connected and configured correctly, you should see 'Sync' notification as show on screenshot below.
+
+![](screenshots/7.png)
+
+You should also be able to find `default:deployment/mysql` in Weave Cloud Deploy UI.
+
+![](screenshots/8.png)
+
 
 Now in your Git repo, you can add all the YAML manifests that make up your application. GitOps will be in effect and every git push resulting in a commit will result in the Weave Cloud agent pulling the new version of the manifests and applying the difference in your Kubernetes cluster.
 
@@ -45,15 +70,25 @@ kubectl create -f https://github.com/bitnami/sealed-secrets/releases/download/$r
 kubectl create -f https://github.com/bitnami/sealed-secrets/releases/download/$release/controller.yaml
 ```
 
-To generate a Sealed secret object you can start from a regular Kubernetes secret object (not stored in etcd) and then use `kubeseal` to obtain a properly encrypted secret:
+Now, clone your fork of this repository and cd into it.
+```
+git clone git@github.com/<username>/gitops-with-sealed-secrets
+cd gitops-with-sealed-secret
+```
+
+To generate a SealedSecret object you need to create a regular Kubernetes secret object localy and then use `kubeseal` to obtain a properly encrypted secret:
 
 ```
-kubectl create secret generic foobar --from-literal=password=root -o json --dry-run
+kubectl create secret generic mysql --from-literal=password=root -o json --dry-run > secret.json
+```
+
+The contents of resulting `secret.json` will apper like this:
+```
 {
     "kind": "Secret",
     "apiVersion": "v1",
     "metadata": {
-        "name": "foobar",
+        "name": "mysql",
         "creationTimestamp": null
     },
     "data": {
@@ -62,7 +97,7 @@ kubectl create secret generic foobar --from-literal=password=root -o json --dry-
 }
 ```
 
-Save it in a file and encrypt it
+Save it in a file and encrypt it using `kubeseal` command like this:
 
 > Note: currently Weave Cloud Deploy doesn't support JSON, but as YAML is a subset of JSON we can simply use `.yaml` suffix
 
@@ -70,43 +105,62 @@ Save it in a file and encrypt it
 kubeseal < secret.json > sealed-secret.yaml
 ```
 
+And check it in:
+
+```
+git add sealed-secret.yaml
+git commit -m 'Add sealed secrtet'
+git push
+```
+
 Now this encrypted secret can be stored in Git as you wish, and once the Weave Cloud agent deploys it automatically, the Sealed-secrets controller will detect it and automatically decrypt it and generate a real Kubernetes secret object.
 
 This process allows you to keep using GitOps even for your sensitive information. You keep it fully encrypted in your git repo but the Weave Cloud agent will automatically leverage the sealed secret controller to generate the valid secret object that your other manifests can use.
 
 
-## [Example](https://github.com/sebgoa/flux-demo) with Mysql Database
+## [Example](https://github.com/sebgoa/flux-demo) with MySQL Database
 
-To illustrate all of this, write a Pod manifest to run Mysql database using a `mysql` secret that holds the MySql root password:
+> Note: This example is aleready include in the repository
+
+To illustrate all of this, write a manifest to run MySQL database using a `mysql` secret that holds the MySQL root password:
 
 ```
-apiVersion: v1
-kind: Pod
+apiVersion: apps/v1beta2
+kind: Deployment
 metadata:
   name: mysql
+  labels:
+    name: mysql
 spec:
-  containers:
-  - image: mysql:5.5
-    name: db
-    volumeMounts:
-    - mountPath: /var/lib/mysql
-      name: barfoo
-    env:
-      - name: MYSQL_ROOT_PASSWORD
-        valueFrom:
-          secretKeyRef:
-            name: mysql
-            key: password
-  volumes:
-  - name: barfoo
-    persistentVolumeClaim:
-      claimName: mysql
+  selector:
+    matchLabels:
+      name: mysql
+  template:
+    metadata:
+      labels:
+        name: mysql
+    spec:
+      containers:
+      - image: mysql:5.5
+        name: db
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: barfoo
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql
+                key: password
+      volumes:
+      - name: barfoo
+        persistentVolumeClaim:
+          claimName: mysql
 ```
 
 But instead of storing an unencrypted secret you store in Git a _Sealed-Secret_ which is safe to share publicly.
 
 ```
-
 apiVersion: bitnami.com/v1alpha1
 kind: SealedSecret
 metadata:
@@ -122,15 +176,14 @@ If you are curious to learn more about the encryption process please check the [
 The result is that in your cluster you will see a running mysql Pod that is using a Kubernetes Secret to store its root password. However the actual password is stored safely in Git as a sealed secret.
 
 ```
-kubectl get pods --all-namespaces
-NAMESPACE     NAME                                        READY     STATUS                       RESTARTS   AGE
-default       mysql                                       1/1       Running 						  0          30m
-kube-system   sealed-secrets-controller-cd4f586fc-xp2tx   1/1       Running                      0          36m
-...
-$ kubectl get secrets
-NAME                  TYPE                                  DATA      AGE
-default-token-nqg8d   kubernetes.io/service-account-token   3         1h
-$ kubectl get sealedsecret
-NAME      AGE
-mysql     36m
+$ kubectl get deployments,pods,secrets
+NAME           DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+deploy/mysql   1         1         1            0           14m
+
+NAME                        READY     STATUS  RESTARTS   AGE
+po/mysql-6965c5b477-wqtw8   1/1       Ready   0          14m
+
+NAME                          TYPE                                  DATA      AGE
+secrets/default-token-rndqq   kubernetes.io/service-account-token   3         12d
+secrets/mysql                 Opaque
 ```
